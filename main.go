@@ -62,7 +62,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	flag.StringVar(&dir, "dir", "/tmp", "Specify a directory to server files from.")
+	flag.StringVar(&dir, "dir", ".", "Specify a directory to server files from.")
 	flag.StringVar(&port, "port", ":8080", "Port to bind the file server")
 	flag.BoolVar(&logging, "log", true, "Enable Log (true/false)")
 	flag.StringVar(&auth, "auth", "", "'username:pass' Basic Auth")
