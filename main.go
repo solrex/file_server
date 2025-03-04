@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -31,6 +32,27 @@ var (
 
 const MAX_MEMORY = 1 * 1024 * 1024
 const VERSION = "1.0"
+
+func getLocalIP() (string, error) {
+    interfaces, err := net.Interfaces()
+    if err != nil {
+        return "", err
+    }
+    for _, i := range interfaces {
+        addrs, err := i.Addrs()
+        if err != nil {
+            continue
+        }
+        for _, addr := range addrs {
+            if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+                if ipNet.IP.To4() != nil {
+                    return ipNet.IP.String(), nil
+                }
+            }
+        }
+    }
+    return "", fmt.Errorf("no non-loopback IP found")
+}
 
 func main() {
 
@@ -100,7 +122,15 @@ func main() {
 	mux.Handle("/-/api/dirs", makeGzipHandler(http.HandlerFunc(SearchHandle)))
 	mux.Handle("/", BasicAuth(http.HandlerFunc(handleReq), auth))
 
-	log.Printf("Listening on port %s .....\n", port)
+	ip, err := getLocalIP()
+        if err != nil {
+                log.Fatal("Failed to get LocalIP:", err)
+        }
+        if auth != "" {
+                log.Printf("Serving at http://%s@%s%s/\n", auth, ip, port)
+        } else {
+                log.Printf("Serving at http://%s%s/\n", ip, port)
+        }
 	if debug {
 		log.Print("Serving data dir in debug mode.. no assets caching.\n")
 	}
