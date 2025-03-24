@@ -33,25 +33,47 @@ var (
 const MAX_MEMORY = 1 * 1024 * 1024
 const VERSION = "1.0"
 
-func getLocalIP() (string, error) {
-    interfaces, err := net.Interfaces()
-    if err != nil {
-        return "", err
-    }
-    for _, i := range interfaces {
-        addrs, err := i.Addrs()
-        if err != nil {
-            continue
-        }
-        for _, addr := range addrs {
-            if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
-                if ipNet.IP.To4() != nil {
-                    return ipNet.IP.String(), nil
-                }
-            }
-        }
-    }
-    return "", fmt.Errorf("no non-loopback IP found")
+func getLocalIPs() ([]string, error) {
+	var ipList []string
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	excludedPrefixes := []string{
+		"lo",
+		"docker",
+		"veth",
+		"br-",
+		"virbr",
+	}
+	for _, i := range interfaces {
+		skip := false
+		for _, prefix := range excludedPrefixes {
+			if strings.HasPrefix(i.Name, prefix) {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+		addrs, err := i.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+				if ipNet.IP.To4() != nil {
+					ipList = append(ipList, ipNet.IP.String())
+				}
+			}
+		}
+	}
+	if len(ipList) == 0 {
+		return nil, fmt.Errorf("no non-loopback IP found")
+	} else {
+		return ipList, nil
+	}
 }
 
 func main() {
@@ -122,15 +144,19 @@ func main() {
 	mux.Handle("/-/api/dirs", makeGzipHandler(http.HandlerFunc(SearchHandle)))
 	mux.Handle("/", BasicAuth(http.HandlerFunc(handleReq), auth))
 
-	ip, err := getLocalIP()
-        if err != nil {
-                log.Fatal("Failed to get LocalIP:", err)
-        }
-        if auth != "" {
-                log.Printf("Serving at http://%s@%s%s/\n", auth, ip, port)
-        } else {
-                log.Printf("Serving at http://%s%s/\n", ip, port)
-        }
+	server_info := "Serving at: "
+	ips, err := getLocalIPs()
+	if err != nil {
+		log.Fatal("Failed to get LocalIP:", err)
+	}
+	for _, ip := range ips {
+		if auth != "" {
+			server_info += fmt.Sprintf("http://%s@%s%s/, ", auth, ip, port)
+		} else {
+			server_info += fmt.Sprintf("http://%s%s/, ", ip, port)
+		}
+	}
+	log.Printf("%s", server_info[: len(server_info) - 2])
 	if debug {
 		log.Print("Serving data dir in debug mode.. no assets caching.\n")
 	}
